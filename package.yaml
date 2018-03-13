@@ -3,7 +3,7 @@ version:             0.1.0.0
 github:              "wangbj/devicetree"
 license:             BSD3
 author:              "Baojun Wang"
-maintainer:          "example@example.com"
+maintainer:          "wangbj@gmail.com"
 copyright:           "2018 Baojun Wang"
 
 extra-source-files:
