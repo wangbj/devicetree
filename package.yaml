@@ -1,0 +1,54 @@
+name:                devicetree
+version:             0.1.0.0
+github:              "wangbj/devicetree"
+license:             BSD3
+author:              "Baojun Wang"
+maintainer:          "example@example.com"
+copyright:           "2018 Baojun Wang"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Linux device tree parser
+# category:            Data
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on Github at <https://github.com/wangbj/devicetree#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- bytestring >= 0.10
+- cereal >= 0.5
+- derive-storable >= 0.1
+- QuickCheck >= 2.10
+- containers >= 0.5
+- mtl >= 2.2
+
+library:
+  source-dirs: src
+
+executables:
+  devicetree-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - devicetree
+
+tests:
+  devicetree-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - devicetree
