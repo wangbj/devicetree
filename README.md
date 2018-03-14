@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/wangbj/devicetree.svg?branch=master)](https://travis-ci.org/wangbj/devicetree)
 # devicetree
 
 Linux device tree parser, device tree specification can be found at [1]
