@@ -28,6 +28,8 @@ dependencies:
 - hspec >= 2.4
 - containers >= 0.5
 - mtl >= 2.2
+- zip >= 1.0
+- text >= 1.2
 
 library:
   source-dirs: src
