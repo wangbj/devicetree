@@ -1,6 +1,5 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE TupleSections #-}
 
 module Data.DeviceTree.Types (
     DtNode
@@ -22,10 +21,10 @@ import           Data.ByteString (ByteString)
 import           Data.Word
 import           Foreign.C
 import           Foreign.Ptr
-import           Data.Serialize hiding (encode, decode)
+import           Data.Serialize
 import           Foreign.Storable.Generic
 import           GHC.Generics
-import           Control.Applicative hiding (many, many1)
+import           Control.Applicative
 import           Control.Monad
 import           Data.Bits
 import           Data.Tree
@@ -90,11 +89,11 @@ instance Enum FdtToken where
 instance Storable FdtToken where
   sizeOf _    = sizeOf (undefined :: CInt)
   alignment _ = alignment (undefined :: CInt)
-  peek ptr = (toEnum . fromIntegral) <$> peek (castPtr ptr :: Ptr Word32)
+  peek ptr = toEnum . fromIntegral <$> peek (castPtr ptr :: Ptr Word32)
   poke ptr = poke (castPtr ptr :: Ptr Word32) . fromIntegral . fromEnum
 
 instance Serialize FdtToken where
-  get = (toEnum . fromIntegral) <$> getWord32be
+  get = toEnum . fromIntegral <$> getWord32be
   put = putWord32be . fromIntegral . fromEnum
 
 data FdtError = FdtErrorBadMagicNum
@@ -133,16 +132,16 @@ mapLeft g (Right x) = Right x
 
 parseDtb_ = do
   header <- get :: Get FdtHeader
-  if fdtMagic header /= fdtMagicNum then return (Left FdtErrorBadMagicNum) else do
-    if fdtVersion header /= 17 || fdtLastCompVersion header /= 16 then return (Left FdtErrorBadVersion) else do
+  if fdtMagic header /= fdtMagicNum then return (Left FdtErrorBadMagicNum) else
+    if fdtVersion header /= 17 || fdtLastCompVersion header /= 16 then return (Left FdtErrorBadVersion) else
       if fdtTotalSize header /= min (fdtOffDtStruct header) (fdtOffDtStrings header) + fdtSizeDtStrings header + fdtSizeDtStruct header then return (Left FdtErrorSizeInvalid) else do
-        let (kMem, kMemValid) = (min (fdtOffDtStruct header) (fdtOffDtStrings header) - fdtOffMemRsvmap header) `quotRem` (fromIntegral (sizeOf (undefined :: FdtReservedEntry)))
+        let (kMem, kMemValid) = (min (fdtOffDtStruct header) (fdtOffDtStrings header) - fdtOffMemRsvmap header) `quotRem` fromIntegral (sizeOf (undefined :: FdtReservedEntry))
         if kMemValid /= 0 then return (Left FdtErrorSizeInvalid) else do
           rsv <- replicateM (fromIntegral kMem) (get :: Get FdtReservedEntry)
           (s, t) <- if fdtOffDtStruct header < fdtOffDtStrings header
             then liftA2 (,) (getBytes (fromIntegral (fdtSizeDtStruct header))) (getBytes (fromIntegral (fdtSizeDtStrings header)))
             else liftA2 (,) (getBytes (fromIntegral (fdtSizeDtStrings header))) (getBytes (fromIntegral (fdtSizeDtStruct header)))
-          return $! Right (header, rsv, s, t)
+          return (Right (header, rsv, s, t))
 
 parseDtbHelper dtb = either (Left . FdtErrorSerializeFailed) id (runGet parseDtb_ dtb)
 

@@ -13,7 +13,7 @@ import           Test.Hspec
 import           Control.Monad
 
 extractAll :: [EntrySelector] -> ZipArchive [(String, ByteString)]
-extractAll = mapM extract
+extractAll = traverse extract
   where
     extract :: EntrySelector -> ZipArchive (String, ByteString)
     extract e = getEntry e >>= \s -> return (Text.unpack (getEntryName e), s)
@@ -23,6 +23,13 @@ canParseAllDtbs dtbs = describe "parse all dtbs for Linux/arm64" $ do
   it "dtbs is not empty" (null entries `shouldBe` False)
   mapM_ (\(i, s) -> it ("parse " ++ i) ( isRight (decode s) `shouldBe` True)) entries
 
+decodeEncodeIsId dtbs = describe "`decode . encode == id` for Linux/arm64" $ do
+  entries <- runIO $ withArchive dtbs (extractAll =<< (Map.keys <$> getEntries))
+  mapM_ (\(i, s) -> it ("decode . encode " ++ i) ( encode <$> decode s `shouldBe` Right s )) entries
+
+dtbZip = "test/dtbs.zip"
+
 main :: IO ()
 main = hspec $ do
-  canParseAllDtbs "test/dtbs.zip"
+  canParseAllDtbs dtbZip
+  decodeEncodeIsId dtbZip
