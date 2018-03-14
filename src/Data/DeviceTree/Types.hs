@@ -1,15 +1,18 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE TupleSections #-}
 
 module Data.DeviceTree.Types (
-                             ) where
+    DtNode
+  , parseDt
+  , FdtError (..)
+  ) where
 
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as C
 import           Data.ByteString (ByteString)
 import           Data.Word
-import           Debug.Trace
 import           Foreign.C
 import           Foreign.Ptr
 import           Data.Serialize
@@ -18,8 +21,7 @@ import           GHC.Generics
 import           Control.Applicative hiding (many, many1)
 import           Control.Monad
 import           Data.Bits
--- import           Text.Parsec
-import           Control.Monad.IO.Class
+import           Data.Tree
 
 fdtMagicNum :: Word32 -- big endian
 fdtMagicNum = 0xd00dfeed
@@ -87,7 +89,7 @@ instance Serialize FdtToken where
 data FdtError = FdtErrorBadMagicNum
               | FdtErrorSizeInvalid
               | FdtErrorBadVersion
-              | FdtErrorSerializeFailed
+              | FdtErrorSerializeFailed String
               deriving (Show, Eq, Ord)
 
 beginNode = C.unpack $! runPut (put FdtTokenBeginNode)
@@ -116,29 +118,44 @@ getProp strtab = do
   let lenAligned = (alignUp4 . fromIntegral) len
   propData <- getBytes lenAligned
   let name = cstring strtab (fromIntegral nameoff)
-  traceShowM (name, propData, lenAligned)
   s2 <- remaining
   return (s1 - s2, (name, propData))
 
-getProps strtab = (lookAhead (getProp strtab) >>= \(k, r) -> skip k >> liftM (r:) (getProps strtab)) <|> return []
+getProps_ strtab = (lookAhead (getProp strtab) >>= \(k, r) -> skip k >> liftM (r:) (getProps_ strtab)) <|> return []
 
-getNode strtab = do
+getProps strtab nodeName = liftM (nodeName,) (getProps_ strtab)
+
+getChildNodesEnding strtab n props k = if k <= 0 then return [Node props []] else do
+  endNode <- (lookAhead (get :: Get FdtToken))
+  case endNode of
+    FdtTokenEndNode   -> skip (sizeOf (undefined :: FdtToken)) >> getChildNodesEnding strtab n props (k-1)
+    FdtTokenBeginNode -> liftM ((Node props []):) (getChildNodes strtab n (1+k))
+    _                 -> remaining >>= \r -> fail $ "failed to parse child nodes at offset: " ++ show (n-r) ++ " bytes."
+
+getChildNodes ::ByteString -> Int -> Int -> Get (Forest (ByteString, [(ByteString, ByteString)]) )
+getChildNodes strtab n k = do
   rem1 <- remaining
-  nop1 <- getNops
-  void (expect FdtTokenBeginNode)
-  name <- S.pack <$> getCStringPadded
-  props <- getProps strtab
-  rem3 <- remaining
-  nodes <- getNodes strtab
   void getNops
-  x <- getWord32be
-  y <- getWord32be
-  traceShowM ("...", rem1- rem3, x, y)
-  void (expect FdtTokenEndNode)
-  rem2 <- remaining
-  return (rem1 - rem2, props)
+  end <- (lookAhead (get :: Get FdtToken))
+  if end == FdtTokenEnd then return [] else do
+    void (expect FdtTokenBeginNode)
+    name <- S.pack <$> getCStringPadded
+    props <- getProps strtab name
+    void getNops
+    endNode <- (lookAhead (get :: Get FdtToken))
+    case endNode of
+      FdtTokenEndNode   -> getChildNodesEnding strtab n props k
+      FdtTokenBeginNode -> getChildNodes strtab n (1+k) >>= \childs -> return $! [Node props childs]
+      _                 -> remaining >>= \r -> fail $ "failed to parse child nodes at offset: " ++ show (n-r) ++ " bytes."
 
-getNodes strtab = (lookAhead (getNode strtab >>= \(k, d) -> skip k >> liftM (d++) (getNodes strtab))) <|> return []
+getRootNode :: ByteString -> Int -> Get (Tree (ByteString, [(ByteString, ByteString)]))
+getRootNode strtab n = do
+  getNops
+  childs <- getChildNodes strtab n 1
+  case childs of
+    []     -> (void (expect FdtTokenEnd) >> return (Node (mempty, []) []))
+    [x]    -> (void (expect FdtTokenEnd)) >> remaining >>= \r -> if r == 0 then return x else fail $! "cannot consume all dtStruct from device tree, with " ++ show r ++ " bytes left."
+    (x:xs) -> fail $! "device tree have multiple roots"
 
 getCStringPadded = do
   c <- getWord8
@@ -155,6 +172,10 @@ parseNode = do
   beginNode <- get :: Get FdtToken
   return ()
 
+mapLeft :: (e -> e') -> Either e a -> Either e' a
+mapLeft g (Left e) = Left (g e)
+mapLeft g (Right x) = Right x
+
 parseDt_ = do
   header <- get :: Get FdtHeader
   if fdtMagic header /= fdtMagicNum then return (Left FdtErrorBadMagicNum) else do
@@ -168,10 +189,12 @@ parseDt_ = do
             else liftA2 (,) (getBytes (fromIntegral (fdtSizeDtStrings header))) (getBytes (fromIntegral (fdtSizeDtStruct header)))
           return $! Right (header, rsv, s, t)
 
-parseDt dtb = either (const (Left FdtErrorSerializeFailed)) id (runGet parseDt_ dtb)
+parseDtHelper dtb = either (Left . FdtErrorSerializeFailed) id (runGet parseDt_ dtb)
 
-ints :: ByteString -> [Int]
-ints s = if S.null s then [] else case runGet getWord32be s1 of
-  Left _ -> []
-  Right x -> fromIntegral x : ints s2
-  where (s1, s2) = S.splitAt 4 s
+type DtNode = (ByteString, [ (ByteString, ByteString) ])
+
+parseDt :: ByteString -> Either FdtError (Tree DtNode)
+parseDt dtb = do
+  (header, rsv, dt, strtab) <- parseDtHelper dtb
+  let dtSize = fromIntegral (fdtSizeDtStruct header)
+  mapLeft (FdtErrorSerializeFailed) (runGet (getRootNode strtab dtSize) dt)
