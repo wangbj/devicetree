@@ -3,8 +3,8 @@ language: c
 
 matrix:
   include:
-    - env: CABALVER=2.0.0 GHCVER=8.2.2
-      addons: {apt: {packages: [cabal-install-2.0.0,ghc-8.2.2],sources: [hvr-ghc]}}
+    - env: CABALVER=2.0 GHCVER=8.2.2
+      addons: {apt: {packages: [cabal-install-2.0,ghc-8.2.2],sources: [hvr-ghc]}}
 
 cache:
   directories:
