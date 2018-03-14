@@ -1,3 +1,4 @@
+module Main where
 {-# LANGUAGE FlexibleContexts #-}
 import qualified Data.ByteString as S
 import           Data.ByteString (ByteString)
@@ -20,7 +21,7 @@ extractAll = mapM extract
 canParseAllDtbs dtbs = describe "parse all dtbs for Linux/arm64" $ do
   entries <- runIO $ withArchive dtbs (extractAll =<< (Map.keys <$> getEntries))
   it "dtbs is not empty" (null entries `shouldBe` False)
-  mapM_ (\(i, s) -> it ("parse " ++ i) ( isRight (parseDt s) `shouldBe` True)) entries
+  mapM_ (\(i, s) -> it ("parse " ++ i) ( isRight (decode s) `shouldBe` True)) entries
 
 main :: IO ()
 main = hspec $ do
