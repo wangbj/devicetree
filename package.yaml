@@ -25,6 +25,7 @@ dependencies:
 - cereal >= 0.5
 - derive-storable >= 0.1
 - QuickCheck >= 2.10
+- hspec >= 2.4
 - containers >= 0.5
 - mtl >= 2.2
 
