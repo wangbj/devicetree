@@ -10,20 +10,15 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as C
 import           Data.ByteString (ByteString)
 import           Data.Word
-import           Foreign.C
-import           Foreign.Ptr
 import qualified Data.Serialize as Serialize
 import           Data.Attoparsec.ByteString
 import qualified Data.Attoparsec.ByteString.Char8 as AC
 import           Data.Attoparsec.Combinator
-import           Foreign.Storable.Generic
-import           GHC.Generics
+import           Foreign.Storable
 import           Control.Applicative
 import           Control.Monad
 import           Data.Bits
 import           Data.Tree
-import           Control.Exception (Exception)
-import           Control.DeepSeq
 import           Data.Semigroup
 
 import           Data.DeviceTree.Types
@@ -44,17 +39,22 @@ anyWord32be = combineWord32be
               <*> anyWord8
 
 word32be :: Word32 -> Parser Word32
-word32be x = (==x) <$> anyWord32be >> return x
+word32be a = word8 w *> word8 x *> word8 y *> word8 z *> return a
+  where
+    w = fromIntegral (a `shiftR` 24)
+    x = fromIntegral (a `shiftR` 16)
+    y = fromIntegral (a `shiftR` 8)
+    z = fromIntegral a
 
 anyFdtToken :: Parser FdtToken
 anyFdtToken = (toEnum . fromIntegral) <$> anyWord32be
 
 fdtToken :: FdtToken -> Parser FdtToken
-fdtToken token = (toEnum . fromIntegral) <$> (word32be . fromIntegral . fromEnum) token
+fdtToken token = word32be (fromIntegral (fromEnum token)) *> return token
 
 getNop = try (fdtToken FdtTokenNop)
 
-getNops = try (many getNop)
+getNops = many getNop
 
 alignUp4 x = (x + 3) .&. complement 3
 
@@ -119,9 +119,9 @@ decode :: ByteString -> Either FdtError Fdt
 decode dtb = do
   FdtBlob header rsv dt strtab <- parseDtb dtb
   let dtSize = fromIntegral (fdtSizeDtStruct header)
-  case parse (getRootNode strtab dtSize) dt of
-    Done _ r -> Right (Fdt (FdtBlob header rsv dt strtab) r)
-    _        -> Left (FdtErrorSerializeFailed "..")
+  case parseOnly (getRootNode strtab dtSize) dt of
+    Right r   -> Right (Fdt (FdtBlob header rsv dt strtab) r)
+    Left err  -> Left (FdtErrorSerializeFailed err)
 
 encode :: Fdt -> ByteString
 encode (Fdt (FdtBlob header rsv dt strtab) _) = Serialize.encode header <> mconcat (map Serialize.encode rsv) <> dt <> strtab

@@ -10,18 +10,13 @@ import qualified Data.ByteString as S
 import qualified Data.ByteString.Char8 as C
 import           Data.ByteString (ByteString)
 import           Data.Word
-import           Foreign.C
-import           Foreign.Ptr
 import           Data.Serialize hiding (encode, decode)
 import qualified Data.Serialize as Serialize
-import           Foreign.Storable.Generic
-import           GHC.Generics
+import           Foreign.Storable
 import           Control.Applicative
 import           Control.Monad
 import           Data.Bits
 import           Data.Tree
-import           Control.Exception
-import           Control.DeepSeq
 import           Data.Semigroup
 
 import           Data.DeviceTree.Types
