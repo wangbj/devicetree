@@ -8,6 +8,7 @@ import           Data.Map (Map)
 import           Data.Text (Text)
 import           Codec.Archive.Zip
 import           Data.DeviceTree
+import qualified Data.DeviceTree.Parse as DP
 import           Data.Either
 import           Test.Hspec
 import           Control.Monad
@@ -21,11 +22,11 @@ extractAll = traverse extract
 canParseAllDtbs dtbs = describe "parse all dtbs for Linux/arm64" $ do
   entries <- runIO $ withArchive dtbs (extractAll =<< (Map.keys <$> getEntries))
   it "dtbs is not empty" (null entries `shouldBe` False)
-  mapM_ (\(i, s) -> it ("parse " ++ i) ( isRight (decode s) `shouldBe` True)) entries
+  mapM_ (\(i, s) -> it ("parse " ++ i) ( isRight (DP.decode s) `shouldBe` True)) entries
 
 decodeEncodeIsId dtbs = describe "`decode . encode == id` for Linux/arm64" $ do
   entries <- runIO $ withArchive dtbs (extractAll =<< (Map.keys <$> getEntries))
-  mapM_ (\(i, s) -> it ("decode . encode " ++ i) ( encode <$> decode s `shouldBe` Right s )) entries
+  mapM_ (\(i, s) -> it ("decode . encode " ++ i) ( DP.encode <$> DP.decode s `shouldBe` Right s )) entries
 
 dtbZip = "test/dtbs.zip"
 
