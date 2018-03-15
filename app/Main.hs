@@ -14,7 +14,7 @@ import           Data.DeviceTree
 
 prettyShowDtb dtb = do
   case decode dtb of
-    Left _ -> return ()
+    Left err  -> putStrLn $! "error: " ++ (show err)
     Right fdt -> putStrLn . drawTree . fmap show . dtGetTree $ fdt
 
 usage :: IO ()
