@@ -3,15 +3,16 @@
 
 module Data.DeviceTree.Types (
     DtNode
-  , FdtError (..)
+  , DtError (..)
   , FdtToken (..)
   , FdtBlob (..)
   , FdtProp (..)
   , FdtHeader (..)
-  , FdtReservedEntry (..)
-  , Fdt (..)
+  , DtReservedEntry (..)
+  , DeviceTree (..)
   , parseDtb
-  , fdtGetTree
+  , dtGetTree
+  , dtGetReservedBlock
   , fdtMagicNum
   ) where
 
@@ -52,10 +53,10 @@ data FdtHeader = FdtHeader {
 instance Serialize FdtHeader
 instance NFData FdtHeader
 
-data FdtReservedEntry = FdtReservedEntry Word64 Word64 deriving (Show, Read, Eq, Ord, Generic, GStorable)
+data DtReservedEntry = DtReservedEntry Word64 Word64 deriving (Show, Read, Eq, Ord, Generic, GStorable)
 
-instance Serialize FdtReservedEntry
-instance NFData FdtReservedEntry
+instance Serialize DtReservedEntry
+instance NFData DtReservedEntry
 
 data FdtProp = FdtProp Word32 Word32 deriving (Show, Read, Eq, Ord, Generic, GStorable)
 
@@ -96,33 +97,42 @@ instance Serialize FdtToken where
   get = toEnum . fromIntegral <$> getWord32be
   put = putWord32be . fromIntegral . fromEnum
 
-data FdtError = FdtErrorBadMagicNum
-              | FdtErrorSizeInvalid
-              | FdtErrorBadVersion
-              | FdtErrorSerializeFailed String
+data DtError =  DtErrorBadMagicNum       -- ^magic number mismtch
+              | DtErrorSizeInvalid       -- ^invalid dtSize or stringSize
+              | DtErrorBadVersion        -- ^bad dt version (not 17) or bad compatible version (<= 16)
+              | DtErrorInternal String   -- ^internal error
               deriving (Show, Eq, Ord, Generic)
 
-instance Exception FdtError
-instance NFData FdtError
+instance Exception DtError
+instance NFData DtError
 
 data FdtBlob = FdtBlob {
     fbHeader   :: FdtHeader
-  , fbRsvMap   :: [FdtReservedEntry]
+  , fbRsvMap   :: [DtReservedEntry]
   , fbDtStruct :: ByteString
   , fbDtString :: ByteString
   } deriving Generic
 
 instance NFData FdtBlob
 
-data Fdt = Fdt FdtBlob (Tree DtNode) deriving Generic
+data DeviceTree = DeviceTree FdtBlob (Tree DtNode) deriving Generic
 
-instance Show Fdt where
-  show = show . fdtGetTree
+instance Show DeviceTree where
+  show (DeviceTree (FdtBlob header rsvmap dt strtab) tr) = "DeviceTree " ++ case maybeModel of
+    Nothing -> "(unknown model)"
+    Just model -> ("(model: " ++ (C.unpack . C.takeWhile (/= '\0')) model++")")
+    where
+      maybeModel = lookup (C.pack "model") ( (snd . rootLabel) tr)
 
-fdtGetTree :: Fdt -> Tree DtNode
-fdtGetTree (Fdt _ tr) = tr
+-- |get tree nodes from `DeviceTree`
+dtGetTree :: DeviceTree -> Tree DtNode
+dtGetTree (DeviceTree _ tr) = tr
 
-instance NFData Fdt
+-- |get reserved memory map from `DeviceTree`
+dtGetReservedBlock :: DeviceTree -> [DtReservedEntry]
+dtGetReservedBlock (DeviceTree (FdtBlob h r _ _) _) = r
+
+instance NFData DeviceTree
 
 type DtNode = (ByteString, [ (ByteString, ByteString) ])
 
@@ -132,18 +142,18 @@ mapLeft g (Right x) = Right x
 
 parseDtb_ = do
   header <- get :: Get FdtHeader
-  if fdtMagic header /= fdtMagicNum then return (Left FdtErrorBadMagicNum) else
-    if fdtVersion header /= 17 || fdtLastCompVersion header /= 16 then return (Left FdtErrorBadVersion) else
-      if fdtTotalSize header /= min (fdtOffDtStruct header) (fdtOffDtStrings header) + fdtSizeDtStrings header + fdtSizeDtStruct header then return (Left FdtErrorSizeInvalid) else do
-        let (kMem, kMemValid) = (min (fdtOffDtStruct header) (fdtOffDtStrings header) - fdtOffMemRsvmap header) `quotRem` fromIntegral (sizeOf (undefined :: FdtReservedEntry))
-        if kMemValid /= 0 then return (Left FdtErrorSizeInvalid) else do
-          rsv <- replicateM (fromIntegral kMem) (get :: Get FdtReservedEntry)
+  if fdtMagic header /= fdtMagicNum then return (Left DtErrorBadMagicNum) else
+    if fdtVersion header /= 17 || fdtLastCompVersion header /= 16 then return (Left DtErrorBadVersion) else
+      if fdtTotalSize header /= min (fdtOffDtStruct header) (fdtOffDtStrings header) + fdtSizeDtStrings header + fdtSizeDtStruct header then return (Left DtErrorSizeInvalid) else do
+        let (kMem, kMemValid) = (min (fdtOffDtStruct header) (fdtOffDtStrings header) - fdtOffMemRsvmap header) `quotRem` fromIntegral (sizeOf (undefined :: DtReservedEntry))
+        if kMemValid /= 0 then return (Left DtErrorSizeInvalid) else do
+          rsv <- replicateM (fromIntegral kMem) (get :: Get DtReservedEntry)
           (s, t) <- if fdtOffDtStruct header < fdtOffDtStrings header
             then liftA2 (,) (getBytes (fromIntegral (fdtSizeDtStruct header))) (getBytes (fromIntegral (fdtSizeDtStrings header)))
             else liftA2 (,) (getBytes (fromIntegral (fdtSizeDtStrings header))) (getBytes (fromIntegral (fdtSizeDtStruct header)))
           return (Right (header, rsv, s, t))
 
-parseDtbHelper dtb = either (Left . FdtErrorSerializeFailed) id (runGet parseDtb_ dtb)
+parseDtbHelper dtb = either (Left . DtErrorInternal) id (runGet parseDtb_ dtb)
 
 -- |parse dtb into a binary blob
 parseDtb dtb = parseDtbHelper dtb >>= \(h, r, d, s) -> return $! FdtBlob h r d s

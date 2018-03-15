@@ -99,12 +99,12 @@ mapLeft :: (e -> e') -> Either e a -> Either e' a
 mapLeft g (Left e) = Left (g e)
 mapLeft g (Right x) = Right x
 
-decode :: ByteString -> Either FdtError Fdt
+decode :: ByteString -> Either DtError DeviceTree
 decode dtb = do
   FdtBlob header rsv dt strtab <- parseDtb dtb
   let dtSize = fromIntegral (fdtSizeDtStruct header)
-  tr <- mapLeft FdtErrorSerializeFailed (runGet (getRootNode strtab dtSize) dt)
-  return $! Fdt (FdtBlob header rsv dt strtab) tr
+  tr <- mapLeft DtErrorInternal (runGet (getRootNode strtab dtSize) dt)
+  return $! DeviceTree (FdtBlob header rsv dt strtab) tr
 
-encode :: Fdt -> ByteString
-encode (Fdt (FdtBlob header rsv dt strtab) _) = Serialize.encode header <> mconcat (map Serialize.encode rsv) <> dt <> strtab
+encode :: DeviceTree -> ByteString
+encode (DeviceTree (FdtBlob header rsv dt strtab) _) = Serialize.encode header <> mconcat (map Serialize.encode rsv) <> dt <> strtab
