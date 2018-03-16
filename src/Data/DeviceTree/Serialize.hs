@@ -53,26 +53,22 @@ getProps_ strtab = (lookAhead (getProp strtab) >>= \(k, r) -> skip k >> fmap (r:
 
 getProps strtab nodeName = fmap (nodeName,) (getProps_ strtab)
 
-getChildNodesEnding strtab n props k
-  | k <= 0 = return [Node props []]
-  | k  > 0 = lookAhead (get :: Get FdtToken) >>= \case
-    FdtTokenEndNode   -> skip fdtTokenSize >> getChildNodesEnding strtab n props (k-1)
-    FdtTokenBeginNode -> fmap (Node props []:) (getChildNodes strtab n (1+k))
-    _                 -> remaining >>= \r -> fail $ "failed to parse child nodes at offset: " ++ show (n-r) ++ " bytes."
-
 getChildNodes ::ByteString -> Int -> Int -> Get (Forest DtNode)
 getChildNodes strtab n k = do
   void getNops
   end <- lookAhead (get :: Get FdtToken)
-  if end == FdtTokenEnd then return [] else do
-    void (expect FdtTokenBeginNode)
-    name <- S.pack <$> getCStringPadded
-    props <- getProps strtab name
-    void getNops
-    lookAhead (get :: Get FdtToken) >>= \case
-      FdtTokenEndNode   -> getChildNodesEnding strtab n props k
-      FdtTokenBeginNode -> getChildNodes strtab n (1+k) >>= \childs -> return [Node props childs]
-      _                 -> remaining >>= \r -> fail $ "failed to parse child nodes at offset: " ++ show (n-r) ++ " bytes."
+  lookAhead (get :: Get FdtToken) >>= \case
+    FdtTokenEnd        -> return []
+    FdtTokenEndNode    -> skip fdtTokenSize >> getChildNodes strtab n (k-1)
+    _                  -> do
+      void (expect FdtTokenBeginNode)
+      name <- S.pack <$> getCStringPadded
+      props <- getProps strtab name
+      void getNops
+      lookAhead (get :: Get FdtToken) >>= \case
+        FdtTokenEndNode   -> skip fdtTokenSize >> fmap (Node props []:) (getChildNodes strtab n k)
+        FdtTokenBeginNode -> getChildNodes strtab n (1+k) >>= \childs -> return [Node props childs]
+        _                 -> remaining >>= \r -> fail $ "failed to parse child nodes at offset: " ++ show (n-r) ++ " bytes."
 
 getRootNode :: ByteString -> Int -> Get (Tree DtNode)
 getRootNode strtab n = 
