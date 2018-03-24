@@ -17,6 +17,15 @@
 #  location: "./custom-snapshot.yaml"
 resolver: lts-11.1
 
+nix:
+  enable: true
+  packages:
+    - pkgconfig
+    - zlib.dev
+    - zlib.out
+    - bzip2.dev
+    - bzip2.out
+
 # User packages to be built.
 # Various formats can be used as shown in the example below.
 #
